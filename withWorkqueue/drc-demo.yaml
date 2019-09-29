@@ -1,0 +1,4 @@
+apiVersion: foo.com/v1
+kind: HelloType
+metadata:
+  name: superman-hello
