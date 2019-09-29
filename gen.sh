@@ -1,0 +1,1 @@
+code-generator/generate-groups.sh all finupgroup.com/decision/traincrd/pkg/client     finupgroup.com/decision/traincrd/pkg apis:v1  --go-header-file  code-generator/hack/boilerplate.go.txt

@@ -1,0 +1,60 @@
+#kind: Pod
+#apiVersion: v1
+#metadata:
+#  name: decisiontrain-app
+#  labels:
+#    app: decisiontrain
+#spec:
+#  containers:
+#    - name: decisiontrain-app
+#      image: harbor.finupgroup.com/decisionoctopus/decisiontrain:1.0.1
+#      imagePullPolicy: Always
+#      resources:
+#        limits:
+#          cpu: 300m
+#          memory: 300Mi
+#        requests:
+#          cpu: 150m
+#          memory: 100Mi
+#  serviceAccount: fission-svc
+#  serviceAccountName: fission-svc
+#
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    svc: decisiontrain-app
+  name: decisiontrain-app
+  namespace: fission
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      svc: decisiontrain-app
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        svc: decisiontrain-app
+    spec:
+      containers:
+        - name: decisiontrain-app
+          image: 'harbor.finupgroup.com/decisionoctopus/decisiontrain:1.0.1'
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 300m
+              memory: 1000Mi
+            requests:
+              cpu: 200m
+              memory: 100Mi
+      serviceAccount: fission-svc
+      serviceAccountName: fission-svc
+      terminationGracePeriodSeconds: 100

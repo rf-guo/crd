@@ -1,0 +1,13 @@
+apiVersion: decision.finupgroup.com/v1
+kind: Traincrd
+metadata:
+  name: my-traincrd-1
+  labels:
+    channel: qz
+    username: wangxx
+spec:
+  image: 10.10.15.51/jupyter/test:1.2.6
+  cpu: 300m
+  memory: 1000Mi
+  reqcpu: 200m
+  reqmemory: 100Mi
