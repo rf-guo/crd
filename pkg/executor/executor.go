@@ -41,10 +41,9 @@ func (exe *Executor) Run() {
 			klog.Infof("add train,  name: %s, ns: %s", train.Name, train.Namespace)
 			traindeploy := traindeployBuild(train)
 			traindeploy.clientK8s = exe.clientK8s
-
 			err := traindeploy.trainCreate()
 			if err != nil {
-				klog.Fatal("创建 失败，", traindeploy.toString(), err.Error())
+				klog.Errorln("创建 失败，", traindeploy.toString(), err.Error())
 			} else {
 				klog.Infof("创建 成功，", traindeploy.toString())
 			}
@@ -55,9 +54,15 @@ func (exe *Executor) Run() {
 			traindeployO := traindeployBuild(trainO)
 			traindeployN := traindeployBuild(trainN)
 
+			// level-driven, “e.g., every five minutes”
 			// 部分可变属性发生变化时触发更新操作
 			deployChanged := false
-			if traindeployO.cpu != traindeployN.cpu || traindeployO.reqCpu != traindeployN.reqCpu ||  traindeployO.memory != traindeployN.memory || traindeployO.reqMemory != traindeployN.reqMemory ||  traindeployO.image != traindeployN.image{
+			if traindeployO.cpu != traindeployN.cpu ||
+				traindeployO.reqCpu != traindeployN.reqCpu ||
+				traindeployO.memory != traindeployN.memory ||
+				traindeployO.reqMemory != traindeployN.reqMemory ||
+				traindeployO.replicas != traindeployN.replicas ||
+				traindeployO.image != traindeployN.image{
 				deployChanged = true
 			}
 			if !deployChanged {
@@ -94,17 +99,3 @@ func (exe *Executor) Run() {
 	informer.Run(stopCh)
 }
 
-func traindeployBuild(obj *v1.Traincrd) *Traindeploy {
-	return &Traindeploy{
-		name:      obj.Name,
-		namespace: obj.Namespace,
-		image:     obj.Spec.Image,
-		username:  obj.Labels["username"],
-		channel:   obj.Labels["channel"],
-		cpu:       obj.Spec.Cpu,
-		memory:    obj.Spec.Memory,
-		reqCpu:    obj.Spec.ReqCpu,
-		reqMemory: obj.Spec.ReqMemory,
-		workDir:   "/user/" + obj.Name,
-	}
-}

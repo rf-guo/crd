@@ -1,6 +1,7 @@
 package executor
 
 import (
+	v1 "finupgroup.com/decision/traincrd/pkg/apis/v1"
 	"fmt"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -14,7 +15,10 @@ import (
 )
 
 const INGRESS_HOST = "mt.10.10.184.25.nip.io"
-const INGRESS_HOST_PROD = "mt.10.10.184.25.nip.io"
+const INGRESS_HOST_PROD = "train-lab.finupgroup.com"
+const PUBLIC_STORAGE = "trainlabpublicstorage"
+const PUBLIC_LIBS_STORAGE = "trainlabpublic-libs-storage"
+const PUBLIC_LIBS_VOLUME = "/usr/crd/lib/"
 
 type Traindeploy struct {
 	name      string
@@ -25,9 +29,33 @@ type Traindeploy struct {
 	memory    string
 	reqCpu    string
 	reqMemory string
+	replicas  int
 	workDir   string
 	image     string
+	capacity  string
 	clientK8s kubernetes.Interface
+}
+
+/**
+通过 CRD  类型 Traincrd 构建 traindeploy 配置
+*/
+func traindeployBuild(obj *v1.Traincrd) *Traindeploy {
+	t := &Traindeploy{
+		name:      obj.Name,
+		namespace: obj.Namespace,
+		image:     obj.Spec.Image,
+		username:  obj.Labels["username"],
+		channel:   obj.Labels["channel"],
+		cpu:       obj.Spec.Cpu,
+		memory:    obj.Spec.Memory,
+		reqCpu:    obj.Spec.ReqCpu,
+		reqMemory: obj.Spec.ReqMemory,
+		replicas:  obj.Spec.Replicas,
+		capacity:  obj.Spec.Capacity,
+	}
+	t.workDir = fmt.Sprintf("/%s/%s/%s/", t.channel, t.username, t.name)
+
+	return t
 }
 
 func (t *Traindeploy) trainCreate() error {
@@ -61,25 +89,25 @@ func (t *Traindeploy) trainCreate() error {
 func (t *Traindeploy) deleteTrain() (err error) {
 	klog.Infoln("删除 Deployment, ", t.name)
 	err = t.deleteDeployment()
-	if !errors.IsNotFound(err) {
+	if errors.IsNotFound(err) {
 		return
 	}
 
 	klog.Infoln("删除 Service, ", t.name)
 	err = t.deleteSvc()
-	if !errors.IsNotFound(err) {
+	if errors.IsNotFound(err) {
 		return err
 	}
 
 	klog.Infoln("删除 Ingress, ", t.name)
 	err = t.deleteIngress()
-	if !errors.IsNotFound(err) {
+	if errors.IsNotFound(err) {
 		return err
 	}
 
 	klog.Infoln("删除 PVC, ", t.name)
 	err = t.deletePVC()
-	if !errors.IsNotFound(err) {
+	if errors.IsNotFound(err) {
 		return err
 	}
 
@@ -128,9 +156,9 @@ func (t *Traindeploy) updateOrGetDeployment(newTrain *Traindeploy) (*appsv1.Depl
 	if err != nil {
 		return nil, err
 	}
-	createdDep, err := t.clientK8s.AppsV1().Deployments(t.namespace).Update(dep)
+	updatedDep, err := t.clientK8s.AppsV1().Deployments(t.namespace).Update(dep)
 
-	return createdDep, err
+	return updatedDep, err
 }
 
 func (t *Traindeploy) deleteDeployment() error {
@@ -145,14 +173,14 @@ func (t *Traindeploy) deleteDeployment() error {
 
 func (t *Traindeploy) makeDeploymentSpec() (*appsv1.Deployment, error) {
 
-	replicas := int32(1)
 	deployLabels := map[string]string{"app": t.name, "username": t.username, "channel": t.channel}
 
-	gracePeriodSeconds := int64(6 * 60)
+	gracePeriodSeconds := int64(1 * 60) //优雅关闭等待时长
+	replicas := int32(t.replicas)
 
 	resources, err := getContainerResources(t)
 	if err != nil {
-		klog.Fatalln("生成 Resources 出现异常，", err)
+		klog.Errorln("生成 Resources 出现异常，", err)
 		return nil, err
 	}
 
@@ -182,6 +210,20 @@ func (t *Traindeploy) makeDeploymentSpec() (*appsv1.Deployment, error) {
 								{Name: "BASE_DIR", Value: t.name},
 								{Name: "WORK_DIR", Value: t.workDir},
 							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      t.name,
+									MountPath: fmt.Sprintf("/%s/%s/%s/", t.channel, t.username, t.name),
+								},
+								{
+									Name:      PUBLIC_STORAGE,
+									MountPath: "/public",
+								},
+								{
+									Name:      PUBLIC_LIBS_STORAGE,
+									MountPath: PUBLIC_LIBS_VOLUME,
+								},
+							},
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "http-env",
@@ -190,7 +232,33 @@ func (t *Traindeploy) makeDeploymentSpec() (*appsv1.Deployment, error) {
 							},
 						},
 					},
-					ServiceAccountName:            "fission-fetcher",
+					ServiceAccountName: "fission-svc",
+					Volumes: []corev1.Volume{
+						{
+							Name: t.name,
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: t.name,
+								},
+							},
+						},
+						{
+							Name: PUBLIC_STORAGE,
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: PUBLIC_STORAGE,
+								},
+							},
+						},
+						{
+							Name: PUBLIC_LIBS_STORAGE,
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: PUBLIC_LIBS_STORAGE,
+								},
+							},
+						},
+					},
 					TerminationGracePeriodSeconds: &gracePeriodSeconds,
 				},
 			},
@@ -302,7 +370,7 @@ func (t *Traindeploy) createOrGetIngress() (*v1beta1.Ingress, error) {
 			Spec: v1beta1.IngressSpec{
 				Rules: []v1beta1.IngressRule{
 					{
-						Host: INGRESS_HOST,
+						Host: INGRESS_HOST_PROD,
 						IngressRuleValue: v1beta1.IngressRuleValue{
 							HTTP: &v1beta1.HTTPIngressRuleValue{
 								Paths: []v1beta1.HTTPIngressPath{
@@ -345,23 +413,31 @@ PVC  CRUDs
 */
 func (t *Traindeploy) createOrGetPersistentVolumeClaim() (*corev1.PersistentVolumeClaim, error) {
 	storageClassName := "cephfs"
-	storageQuantity, _ := resource.ParseQuantity("10Gi")
+	capacity := "1Gi"
+	if t.capacity != "" {
+		capacity = t.capacity
+	}
+	storageQuantity, _ := resource.ParseQuantity(capacity)
 
 	existingPVC, err := t.clientK8s.CoreV1().PersistentVolumeClaims(t.namespace).Get(t.name, metav1.GetOptions{})
 	if err == nil {
 		return existingPVC, err
 	}
 
+	pvcAnn := map[string]string{
+		"volume.beta.kubernetes.io/storage-class":       "cephfs",
+		"volume.beta.kubernetes.io/storage-provisioner": "ceph.com/cephfs",
+	}
 	persistentVolumeClaim := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: t.name,
+			Name:        t.name,
+			Annotations: pvcAnn,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				// can be mounted in read/write mode to exactly 1 host
-				corev1.ReadWriteOnce,
+				corev1.ReadWriteMany,
 			},
-			VolumeName:       t.name,
 			StorageClassName: &storageClassName,
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
@@ -386,6 +462,6 @@ func (t *Traindeploy) deletePVC() (err error) {
 
 func (t *Traindeploy) toString() string {
 	return fmt.Sprintf(
-		" name:%s, username:%s, channel:s%, ns: %s, image:%s, cpu:%s, reqcpu:%s, mem:%s, reqmem:%s, ",
-		t.name, t.username, t.channel, t.namespace, t.image, t.cpu, t.reqCpu, t.memory, t.reqMemory)
+		" name:%s, username:%s, channel:s%, ns: %s, image:%s, cpu:%s, reqcpu:%s, mem:%s, reqmem:%s, replicas:%s, ",
+		t.name, t.username, t.channel, t.namespace, t.image, t.cpu, t.reqCpu, t.memory, t.reqMemory, t.replicas)
 }

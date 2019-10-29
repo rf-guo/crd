@@ -37,8 +37,10 @@ type TraincrdSpec struct {
 	Image     string `json:"image"`
 	Cpu string `json:"cpu"`
 	Memory string `json:"memory"`
-	ReqCpu string `json:"reqcpu,omitempty"`
+	ReqCpu string `json:"reqcpu,omitempty"`  //如果
 	ReqMemory string `json:"reqmemory,omitempty"`
+	Replicas int `json:"replicas,omitempty"`
+	Capacity string `json:"capacity,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

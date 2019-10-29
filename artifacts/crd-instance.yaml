@@ -11,3 +11,4 @@ spec:
   memory: 1000Mi
   reqcpu: 200m
   reqmemory: 100Mi
+  replicas: 1

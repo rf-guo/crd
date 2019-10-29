@@ -26,9 +26,7 @@ metadata:
   labels:
     svc: decisiontrain-app
   name: decisiontrain-app
-  namespace: fission
 spec:
-  progressDeadlineSeconds: 600
   replicas: 1
   revisionHistoryLimit: 10
   selector:
@@ -46,7 +44,7 @@ spec:
     spec:
       containers:
         - name: decisiontrain-app
-          image: 'harbor.finupgroup.com/decisionoctopus/decisiontrain:1.0.1'
+          image: 'decision/decisiontrain:1.0.1'
           imagePullPolicy: Always
           resources:
             limits:
@@ -57,4 +55,4 @@ spec:
               memory: 100Mi
       serviceAccount: fission-svc
       serviceAccountName: fission-svc
-      terminationGracePeriodSeconds: 100
+      terminationGracePeriodSeconds: 30
